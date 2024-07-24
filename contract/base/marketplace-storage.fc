@@ -1,0 +1,24 @@
+#include "../../common/stdlib.func";
+
+global int storage::pubKey;
+global int storage::fee; ;; percent max = 10.000
+global slice storage::owner;
+global cell storage::user_sale_code;
+
+() save_data() impure inline {
+    set_data(begin_cell()
+        .store_uint(storage::pubKey, 256)
+        .store_uint(storage::fee, 32)
+        .store_slice(storage::owner)
+        .store_ref(storage::user_sale_code)
+        .end_cell()
+    );
+}
+
+() load_data() impure inline {
+    var ds = get_data().begin_parse();
+    storage::pubKey = ds~load_uint(256);
+    storage::fee = ds~load_uint(32);
+    storage::owner = ds~load_msg_addr();
+    storage::user_sale_code = ds~load_ref();
+}

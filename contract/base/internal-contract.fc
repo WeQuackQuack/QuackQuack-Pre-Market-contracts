@@ -1,0 +1,73 @@
+#include "constants.fc";
+#include "../../common/messages.func";
+#include "../../common/stdlib.func";
+#include "../../common/params.fc";
+
+cell pack_user_sale(int item_id, slice market_master) inline {
+    return begin_cell()
+        .store_uint(item_id, 64)
+        .store_slice(market_master)
+        .store_slice(market_master) ;; receiver
+        .store_ref(begin_cell() ;; sale_info
+            .store_int(false, 1) ;; active
+            .store_uint(0, 64) ;; user_bought
+            .store_coins(0) ;; price
+            .end_cell()
+        )
+        .end_cell();
+}
+
+cell calculate_user_sale_state_init(int item_id, slice market_master, cell user_contract_code) inline {
+    return begin_cell()
+        .store_uint(0, 2)
+        .store_dict(user_contract_code)
+        .store_dict(pack_user_sale(item_id, market_master))
+        .store_uint(0, 1)
+        .end_cell();
+}
+
+slice calculate_user_sale_contract_address(cell state_init) inline {
+    return begin_cell().store_uint(4, 3)
+        .store_int(workchain(), 8)
+        .store_uint(cell_hash(state_init), 256)
+        .end_cell()
+        .begin_parse();
+}
+
+slice calculate_user_sale_address(int item_id, slice market_master, cell user_contract_code) inline {
+    return calculate_user_sale_contract_address(
+        calculate_user_sale_state_init(
+            item_id,
+            market_master,
+            user_contract_code
+        )
+    );
+}
+
+() request_sell_item(
+int item_id,
+int price,
+slice market_master,
+slice receiver,
+cell user_contract_code
+) impure {
+    cell state_init = calculate_user_sale_state_init(item_id, market_master, user_contract_code);
+    slice to_user_address = calculate_user_sale_contract_address(state_init);
+
+    var msg = begin_cell()
+        .store_uint(0x18, 6)
+        .store_slice(to_user_address)
+        .store_coins(0)
+        .store_uint(4 + 2 + 1, 1 + 4 + 4 + 64 + 32 + 1 + 1 + 1)
+        .store_ref(state_init);
+
+    var msg_body = begin_cell()
+        .store_uint(OP_SELL, 32)
+        .store_uint(0, 64)
+        .store_coins(price)
+        .store_slice(receiver)
+        .end_cell();
+
+    msg = msg.store_ref(msg_body);
+    send_raw_message(msg.end_cell(), CARRY_REMAINING_GAS);
+}

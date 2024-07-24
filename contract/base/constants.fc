@@ -1,0 +1,39 @@
+const int OP_SELL = 6001;
+
+const int OP_CANCEL = 6002;
+const int OP_CANCEL_FAILED = 60020;
+const int OP_CANCEL_SUCCESS = 60021;
+
+const int OP_UPDATE_PRICE = 6003;
+const int OP_UPDATE_PRICE_FAILD = 60030;
+const int OP_UPDATE_PRICE_SUCCESS = 60031;
+
+const int OP_UPDATE_RECEIVER = 6005;
+const int OP_UPDATE_FEE = 6006;
+const int OP_UPDATE_USER_CODE = 6007;
+const int OP_UPGRADE = 6008;
+
+const int OP_ADMIN_WITHDRAW = 6100;
+
+const int OP_BUY = 6200;
+const int OP_BUY_SUCCESS = 6201;
+const int OP_BUY_FAIL = 6202;
+
+const int TYPE_EGGS = 5000;
+const int TYPE_NFT = 5001;
+
+const int ERR_TIME_EXPIRED = 3600;
+const int ERR_NOT_OWNER = 303;
+const int ERR_NOT_MASTER = 305;
+const int ERR_NOT_USER_CONTRACT = 306;
+const int ERR_REQUEST_USED = 5000;
+const int ERR_SIGNATURE_INVALID = 4040;
+const int ERR_VALUE_NOT_ENOUGHT = 4046;
+const int ERR_BALANCE_NOT_ENOUGHT = 4047;
+const int ERR_LOCKCOIN_INVALID = 4048;
+const int ERR_ITEM_ALREADY_SALE = 4050;
+const int ERR_ITEM_INACTIVE = 4051;
+
+const int REQUEST_FEE_REQUIRED = 30000000; ;; 0.03
+const int REQUEST_FEE = 20000000; ;; 0.02
+const int MAX_PERCENTAGE = 10000; ;; 100%

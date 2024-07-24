@@ -1,0 +1,227 @@
+#include "../common/stdlib.func";
+#include "../common/utils.func";
+#include "../common/messages.func";
+#include "../common/params.fc";
+#include "base/constants.fc";
+#include "base/internal-contract.fc";
+#include "base/marketplace-storage.fc";
+
+(int) verify_signature(cell payload, slice signature) impure {
+    return check_signature(cell_hash(payload), signature, storage::pubKey);
+}
+
+(int, int) verify_sell(slice in_msg_body, int op, int query_id) impure {
+    var signature = in_msg_body~load_bits(512);
+    int item_id = in_msg_body~load_uint(64);
+    int expired_time = in_msg_body~load_uint(64);
+    int price = in_msg_body~load_coins();
+
+    cell payload = begin_cell()
+        .store_uint(op, 32)
+        .store_uint(query_id, 64)
+        .store_uint(item_id, 64)
+        .store_uint(expired_time, 64)
+        .store_coins(price)
+        .end_cell();
+
+    throw_unless(ERR_TIME_EXPIRED, now() < expired_time);
+    throw_unless(ERR_SIGNATURE_INVALID, verify_signature(payload, signature));
+
+    save_data();
+    return (item_id, price);
+}
+
+() update_price(slice in_msg_body, slice sender_address, int op, int query_id) impure {
+    var signature = in_msg_body~load_bits(512);
+    int item_id = in_msg_body~load_uint(64);
+    int expired_time = in_msg_body~load_uint(64);
+    int price = in_msg_body~load_coins();
+
+    cell payload = begin_cell()
+        .store_uint(op, 32)
+        .store_uint(query_id, 64)
+        .store_uint(item_id, 64)
+        .store_uint(expired_time, 64)
+        .store_coins(price)
+        .end_cell();
+
+    throw_unless(ERR_TIME_EXPIRED, now() < expired_time);
+    throw_unless(ERR_SIGNATURE_INVALID, verify_signature(payload, signature));
+
+    slice user_sale_address = calculate_user_sale_address(item_id, my_address(), storage::user_sale_code);
+
+    cell update_price = begin_cell()
+        .store_uint(op, 32)
+        .store_uint(query_id, 64)
+        .store_coins(price)
+        .store_slice(sender_address)
+        .end_cell();
+
+    return send_simple_message(0, user_sale_address, update_price, CARRY_REMAINING_GAS | IGNORE_ERRORS);
+}
+
+() buy_item(slice in_msg_body, slice sender_address, int msg_value, int op, int query_id) impure {
+    int item_id = in_msg_body~load_uint(64);
+    int user_id = in_msg_body~load_uint(64); ;; user_id buy item
+
+    throw_unless(ERR_VALUE_NOT_ENOUGHT, msg_value >= REQUEST_FEE_REQUIRED);
+    msg_value = msg_value - REQUEST_FEE_REQUIRED;
+    slice user_sale_address = calculate_user_sale_address(item_id, my_address(), storage::user_sale_code);
+
+    cell buy_request = begin_cell()
+        .store_uint(op, 32)
+        .store_uint(query_id, 64)
+        .store_uint(user_id, 64)
+        .store_slice(sender_address)
+        .store_coins(msg_value)
+        .end_cell();
+
+    return send_simple_message(REQUEST_FEE, user_sale_address, buy_request, NORMAL);
+}
+
+() process_buy_item(slice in_msg_body, slice sender_address, int op) impure {
+    int item_id = in_msg_body~load_uint(64);
+    int user_id = in_msg_body~load_uint(64);
+    int value = in_msg_body~load_coins();
+    slice buyer = in_msg_body~load_msg_addr();
+    slice receiver = in_msg_body~load_msg_addr();
+
+    slice user_sale_address = calculate_user_sale_address(item_id, my_address(), storage::user_sale_code);
+    throw_unless(ERR_NOT_USER_CONTRACT, user_sale_address.equal_slices(sender_address));
+
+    int amount = value;
+
+    if (op == OP_BUY_SUCCESS) {
+        amount = 0;
+        int castout = value * (MAX_PERCENTAGE - storage::fee) / MAX_PERCENTAGE;
+
+        cell castout_body = begin_cell().end_cell();
+        send_message_nobounce(castout, receiver, castout_body, PAID_EXTERNALLY | IGNORE_ERRORS);
+    }
+
+    var body = begin_cell().end_cell();
+    send_message_nobounce(amount, buyer, body, CARRY_REMAINING_GAS | IGNORE_ERRORS);
+}
+
+() cancel_item(slice in_msg_body, slice sender_address, int op, int query_id) impure {
+    var signature = in_msg_body~load_bits(512);
+    int item_id = in_msg_body~load_uint(64);
+    int expired_time = in_msg_body~load_uint(64);
+
+    cell payload = begin_cell()
+        .store_uint(op, 32)
+        .store_uint(query_id, 64)
+        .store_uint(item_id, 64)
+        .store_uint(expired_time, 64)
+        .end_cell();
+
+    throw_unless(ERR_TIME_EXPIRED, now() < expired_time);
+    throw_unless(ERR_SIGNATURE_INVALID, verify_signature(payload, signature));
+
+    slice user_sale_address = calculate_user_sale_address(item_id, my_address(), storage::user_sale_code);
+
+    cell cancel_body = begin_cell()
+        .store_uint(op, 32)
+        .store_uint(query_id, 64)
+        .store_slice(sender_address)
+        .end_cell();
+
+    return send_simple_message(0, user_sale_address, cancel_body, CARRY_REMAINING_GAS | IGNORE_ERRORS);
+}
+
+;; msg value: value of ton transfer
+() recv_internal(int my_balance, int msg_value, cell in_msg_full, slice in_msg_body) {
+    if (in_msg_body.slice_empty?()) {
+        ;; ignore empty messages
+        return ();
+    }
+
+    var cs = in_msg_full.begin_parse();
+    var flags = cs~load_uint(4);
+
+    if (flags & 1) {
+        return ();
+    }
+
+    slice sender_address = cs~load_msg_addr();
+
+    force_chain(sender_address);
+    load_data();
+
+    (int op, int query_id) = (in_msg_body~load_uint(32), in_msg_body~load_uint(64));
+
+    if (op == OP_SELL) {
+        (int item_id, int price) = verify_sell(in_msg_body, op, query_id);
+        return request_sell_item(item_id, price, my_address(), sender_address, storage::user_sale_code);
+    }
+
+    if (op == OP_UPDATE_PRICE) {
+        return update_price(in_msg_body, sender_address, op, query_id);
+    }
+
+    if (op == OP_CANCEL) {
+        return cancel_item(in_msg_body, sender_address, op, query_id);
+    }
+
+    if (op == OP_BUY) {
+        return buy_item(in_msg_body, sender_address, msg_value, op, query_id);
+    }
+
+    if (op == OP_BUY_SUCCESS) {
+        return process_buy_item(in_msg_body, sender_address, op);
+    }
+
+    if (op == OP_BUY_FAIL) {
+        return process_buy_item(in_msg_body, sender_address, op);
+    }
+
+    if ((op == OP_UPDATE_PRICE_SUCCESS) | (op == OP_UPDATE_PRICE_FAILD)) {
+        int item_id = in_msg_body~load_uint(64);
+        in_msg_body~load_coins();
+        slice sender = in_msg_body~load_msg_addr();
+
+        slice user_sale_address = calculate_user_sale_address(item_id, my_address(), storage::user_sale_code);
+        throw_unless(ERR_NOT_USER_CONTRACT, user_sale_address.equal_slices(sender_address));
+
+        var body = begin_cell().end_cell();
+        return send_message_nobounce(0, sender, body, CARRY_REMAINING_GAS | IGNORE_ERRORS);
+    }
+
+    if ((op == OP_CANCEL_SUCCESS) | (op == OP_CANCEL_FAILED)) {
+        int item_id = in_msg_body~load_uint(64);
+        slice sender = in_msg_body~load_msg_addr();
+
+        slice user_sale_address = calculate_user_sale_address(item_id, my_address(), storage::user_sale_code);
+        throw_unless(ERR_NOT_USER_CONTRACT, user_sale_address.equal_slices(sender_address));
+
+        var body = begin_cell().end_cell();
+        return send_message_nobounce(0, sender, body, CARRY_REMAINING_GAS | IGNORE_ERRORS);
+    }
+
+    throw_unless(ERR_NOT_OWNER, equal_slices(storage::owner, sender_address));
+
+    if (op == OP_UPDATE_FEE) {
+        storage::fee = in_msg_body~load_uint(32);
+        save_data();
+    }
+
+    if (op == OP_ADMIN_WITHDRAW) {
+        send_simple_message(0, sender_address, begin_cell().end_cell(), CARRY_ALL_BALANCE | IGNORE_ERRORS);
+        return ();
+    }
+
+    if (op == OP_UPGRADE) {
+        set_code(in_msg_body~load_ref());
+        return ();
+    }
+
+    if (op == OP_UPDATE_USER_CODE) {
+        storage::user_sale_code = in_msg_body~load_ref();
+        save_data();
+    }
+}
+
+(int) get_fee() method_id {
+    load_data();
+    return (storage::fee);
+}
