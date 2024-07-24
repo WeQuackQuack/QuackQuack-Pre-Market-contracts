@@ -1,0 +1,27 @@
+const int OP_MINT_NFT = 6000;
+const int OP_MINT_NFT_AUTO = 6001;
+const int OP_WITHDRAW_TON = 6100;
+const int OP_UPGRADE = 6008;
+const int OP_SET_MINTER = 6009;
+const int OP_BUY_NFT = 3000;
+const int OP_UPDATE_PRICE = 4000;
+const int OP_UPDATE_TIME = 4001;
+const int OP_UPDATE_COLLECTION = 4002;
+const int OP_UPDATE_SALE = 4003;
+
+const int ERR_TIME_EXPIRED = 3600;
+const int ERR_NOT_MINTER = 403;
+const int ERR_NOT_OWNER = 303;
+const int ERR_REQUEST_USED = 5000;
+const int ERR_REQUEST_EXPIRED = 3600;
+const int ERR_SIGNATURE_INVALID = 4040;
+const int ERR_TIER_INVALID = 4041;
+const int ERR_NFT_SOLDOUT = 4042;
+const int ERR_NFT_USER_MAX = 4043;
+const int ERR_VALUE_NOT_ENOUGHT = 4046;
+const int ERR_SALE_NOT_START = 4047;
+const int ERR_SALE_ENDED = 4048;
+
+const int BASE_FEE_MINT_NFT = 10000000;
+const int MINT_REQUEST_FEE = 30000000;
+const int MIN_GAS_EXECUTE = 20000000;
